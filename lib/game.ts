@@ -79,16 +79,22 @@ export function isGameComplete(state: GameState): boolean {
   return state.currentPlayerIndex >= state.players.length
 }
 
+const GAME_KEY = 'imposterPartyGame'
+const AUTOSAVE_KEY = 'imposter-party-state'
+
 export function saveGame(state: GameState): void {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('imposterPartyGame', JSON.stringify(state))
+    const json = JSON.stringify(state)
+    localStorage.setItem(GAME_KEY, json)
+    // Also keep the auto-save key in sync (used for resume detection)
+    localStorage.setItem(AUTOSAVE_KEY, json)
   }
 }
 
 export function loadGame(): GameState | null {
   if (typeof window === 'undefined') return null
   try {
-    const data = localStorage.getItem('imposterPartyGame')
+    const data = localStorage.getItem(GAME_KEY)
     if (!data) return null
     return JSON.parse(data) as GameState
   } catch {
@@ -96,8 +102,27 @@ export function loadGame(): GameState | null {
   }
 }
 
+/**
+ * Check whether there is an in-progress (not-yet-complete) game saved.
+ * Returns the game state if resumable, null otherwise.
+ */
+export function getSavedGame(): GameState | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const data = localStorage.getItem(AUTOSAVE_KEY)
+    if (!data) return null
+    const state = JSON.parse(data) as GameState
+    // Only offer resume if the game isn't complete
+    if (isGameComplete(state)) return null
+    return state
+  } catch {
+    return null
+  }
+}
+
 export function clearGame(): void {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('imposterPartyGame')
+    localStorage.removeItem(GAME_KEY)
+    localStorage.removeItem(AUTOSAVE_KEY)
   }
 }

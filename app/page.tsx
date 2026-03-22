@@ -1,8 +1,28 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { getSavedGame, clearGame, GameState } from '@/lib/game'
 
 export default function Home() {
+  const router = useRouter()
+  const [savedGame, setSavedGame] = useState<GameState | null>(null)
+
+  useEffect(() => {
+    setSavedGame(getSavedGame())
+  }, [])
+
+  const handleResume = () => {
+    router.push('/play')
+  }
+
+  const handleDiscardAndNew = () => {
+    clearGame()
+    setSavedGame(null)
+    router.push('/setup')
+  }
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 py-12" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
       {/* Background decorative elements */}
@@ -28,6 +48,45 @@ export default function Home() {
         </p>
       </div>
 
+      {/* Resume Game banner — only shown if there's a saved mid-game state */}
+      {savedGame && (
+        <div
+          className="relative z-10 w-full max-w-sm mb-6 rounded-2xl p-5"
+          style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.3)' }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-lg">🔄</span>
+            <p className="text-white font-bold text-sm">Game in progress!</p>
+          </div>
+          <p className="text-gray-400 text-xs mb-4">
+            {savedGame.players.length} players · player {savedGame.currentPlayerIndex + 1} of {savedGame.players.length} · {savedGame.category}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleResume}
+              className="flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, #00d4ff, #0099bb)',
+                color: '#1a1a2e',
+              }}
+            >
+              Resume Game →
+            </button>
+            <button
+              onClick={handleDiscardAndNew}
+              className="px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95"
+              style={{
+                background: 'rgba(255,68,68,0.15)',
+                border: '1px solid rgba(255,68,68,0.3)',
+                color: '#ff6666',
+              }}
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* How to play */}
       <div className="relative z-10 w-full max-w-sm mb-10 rounded-2xl p-5 space-y-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <p className="text-gray-300 font-semibold text-sm uppercase tracking-wider mb-3">How to Play</p>
@@ -51,9 +110,12 @@ export default function Home() {
           <button
             className="w-full py-5 rounded-2xl font-bold text-xl text-navy tracking-wide transition-all duration-200 active:scale-95"
             style={{
-              background: 'linear-gradient(135deg, #00d4ff, #0099bb)',
-              color: '#1a1a2e',
-              boxShadow: '0 0 30px rgba(0,212,255,0.5), 0 4px 20px rgba(0,212,255,0.3)',
+              background: savedGame
+                ? 'rgba(255,255,255,0.08)'
+                : 'linear-gradient(135deg, #00d4ff, #0099bb)',
+              color: savedGame ? 'white' : '#1a1a2e',
+              border: savedGame ? '1px solid rgba(255,255,255,0.12)' : 'none',
+              boxShadow: savedGame ? 'none' : '0 0 30px rgba(0,212,255,0.5), 0 4px 20px rgba(0,212,255,0.3)',
             }}
           >
             New Game 🎮

@@ -24,6 +24,9 @@ body {
   min-height: 100vh;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
 }
 
 @layer utilities {
@@ -44,9 +47,14 @@ body {
   }
 }
 
-/* Prevent pull-to-refresh on mobile */
-body {
-  overscroll-behavior: none;
+/* Game in progress indicator */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.game-in-progress-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
 /* Card flip animation */
