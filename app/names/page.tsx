@@ -31,6 +31,15 @@ function NamesContent() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [hasLoadedDefaults, setHasLoadedDefaults] = useState(false)
 
+  // Helper: fit a player array to exactly targetCount slots
+  const fitToCount = (players: string[], targetCount: number): string[] => {
+    const result = players.slice(0, targetCount)
+    while (result.length < targetCount) {
+      result.push('')
+    }
+    return result
+  }
+
   // On mount: load last players or active list
   useEffect(() => {
     if (hasLoadedDefaults) return
@@ -41,20 +50,21 @@ function NamesContent() {
 
     if (savedActiveId) {
       const list = getSavedListById(savedActiveId)
-      if (list && list.players.length >= 3) {
-        setNames(list.players.map((p) => p))
+      if (list && list.players.length >= 1) {
+        setNames(fitToCount(list.players, initialPlayerCount))
         return
       }
     }
 
     // Fall back to last players
     const last = getLastPlayers()
-    if (last.length >= 3) {
-      setNames(last.map((p) => p))
+    if (last.length >= 1) {
+      setNames(fitToCount(last, initialPlayerCount))
     }
-  }, [hasLoadedDefaults])
+  }, [hasLoadedDefaults, initialPlayerCount])
 
-  const playerCount = names.length
+  // Setup count is law — always use initialPlayerCount for display/logic
+  const playerCount = initialPlayerCount
 
   const maxImpostors = Math.min(12, playerCount - 1)
   const displayImpostorCount =
@@ -67,7 +77,7 @@ function NamesContent() {
   }
 
   const addPlayer = () => {
-    if (names.length < 100) {
+    if (names.length < initialPlayerCount) {
       setNames([...names, ''])
     }
   }
@@ -81,7 +91,9 @@ function NamesContent() {
     names[index].trim() || `Player ${index + 1}`
 
   const handleStart = () => {
-    const players = Array.from({ length: playerCount }, (_, i) => getPlayerName(i))
+    // Always enforce setup count — truncate extras, no extras from add button should exist
+    const count = Math.min(names.length, initialPlayerCount)
+    const players = Array.from({ length: count }, (_, i) => getPlayerName(i))
 
     // Save last players always
     saveLastPlayers(players)
@@ -101,8 +113,12 @@ function NamesContent() {
   }
 
   const handleLoadList = (list: SavedList) => {
-    const padded = [...list.players]
-    setNames(padded)
+    // Setup count is law — truncate if too many, pad with blanks if too few
+    const fitted = list.players.slice(0, initialPlayerCount)
+    while (fitted.length < initialPlayerCount) {
+      fitted.push('')
+    }
+    setNames(fitted)
     setActiveListIdState(list.id)
   }
 
@@ -226,13 +242,13 @@ function NamesContent() {
       <div className="flex gap-3 max-w-sm mx-auto mb-6">
         <button
           onClick={addPlayer}
-          disabled={names.length >= 100}
+          disabled={names.length >= initialPlayerCount}
           className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95"
           style={{
-            background: names.length >= 100 ? 'rgba(255,255,255,0.03)' : 'rgba(139,92,246,0.2)',
-            border: names.length >= 100 ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(139,92,246,0.4)',
-            color: names.length >= 100 ? 'rgba(255,255,255,0.2)' : '#a78bfa',
-            cursor: names.length >= 100 ? 'not-allowed' : 'pointer',
+            background: names.length >= initialPlayerCount ? 'rgba(255,255,255,0.03)' : 'rgba(139,92,246,0.2)',
+            border: names.length >= initialPlayerCount ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(139,92,246,0.4)',
+            color: names.length >= initialPlayerCount ? 'rgba(255,255,255,0.2)' : '#a78bfa',
+            cursor: names.length >= initialPlayerCount ? 'not-allowed' : 'pointer',
           }}
         >
           + Add Player
