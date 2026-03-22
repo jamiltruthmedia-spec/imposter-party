@@ -23,22 +23,35 @@ export function getRandomWord(category: Category): string {
 export function createGame(
   players: string[],
   impostorCount: number,
-  category: Category
+  category: Category,
+  neverFirst: boolean = false
 ): GameState {
   const word = getRandomWord(category)
 
-  // Shuffle player indices and pick first N as impostors
-  const indices = players.map((_, i) => i)
-  const shuffled = indices.sort(() => Math.random() - 0.5)
-  const impostorIndices = shuffled.slice(0, impostorCount)
+  // Shuffle player order
+  const shuffledPlayers = [...players].sort(() => Math.random() - 0.5)
+
+  // Assign first N players as impostors
+  const impostorIndices = Array.from({ length: impostorCount }, (_, i) => i)
+
+  // If neverFirst: ensure index 0 is NOT an imposter by swapping if needed
+  if (neverFirst && impostorIndices.includes(0) && shuffledPlayers.length > impostorCount) {
+    // Find first non-imposter index to swap with position 0
+    let swapIdx = impostorCount // first non-imposter
+    // Swap player at position 0 with player at swapIdx
+    const temp = shuffledPlayers[0]
+    shuffledPlayers[0] = shuffledPlayers[swapIdx]
+    shuffledPlayers[swapIdx] = temp
+    // impostorIndices remain the same (1..impostorCount) so index 0 is now a non-imposter
+  }
 
   return {
-    players,
+    players: shuffledPlayers,
     impostorIndices,
     word,
     category,
     currentPlayerIndex: 0,
-    revealedPlayers: players.map(() => false),
+    revealedPlayers: shuffledPlayers.map(() => false),
   }
 }
 
