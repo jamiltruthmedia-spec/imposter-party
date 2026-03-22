@@ -1,9 +1,18 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createGame, saveGame, Category } from '@/lib/game'
+import {
+  getLastPlayers,
+  saveLastPlayers,
+  getActiveListId,
+  getSavedListById,
+  setActiveListId,
+  SavedList,
+} from '@/lib/savedLists'
+import SavedListsSheet from '@/components/SavedListsSheet'
 
 function NamesContent() {
   const router = useRouter()
@@ -18,10 +27,35 @@ function NamesContent() {
   const [names, setNames] = useState<string[]>(
     Array.from({ length: initialPlayerCount }, () => '')
   )
+  const [activeListId, setActiveListIdState] = useState<string | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [hasLoadedDefaults, setHasLoadedDefaults] = useState(false)
+
+  // On mount: load last players or active list
+  useEffect(() => {
+    if (hasLoadedDefaults) return
+    setHasLoadedDefaults(true)
+
+    const savedActiveId = getActiveListId()
+    setActiveListIdState(savedActiveId)
+
+    if (savedActiveId) {
+      const list = getSavedListById(savedActiveId)
+      if (list && list.players.length >= 3) {
+        setNames(list.players.map((p) => p))
+        return
+      }
+    }
+
+    // Fall back to last players
+    const last = getLastPlayers()
+    if (last.length >= 3) {
+      setNames(last.map((p) => p))
+    }
+  }, [hasLoadedDefaults])
 
   const playerCount = names.length
 
-  // Derived: actual imposter count (resolved at game start if random)
   const maxImpostors = Math.min(12, playerCount - 1)
   const displayImpostorCount =
     impostorMode === 'random' ? '?' : Math.min(impostorCountParam, maxImpostors)
@@ -49,6 +83,9 @@ function NamesContent() {
   const handleStart = () => {
     const players = Array.from({ length: playerCount }, (_, i) => getPlayerName(i))
 
+    // Save last players always
+    saveLastPlayers(players)
+
     // Resolve imposter count
     let resolvedImpostorCount: number
     if (impostorMode === 'random') {
@@ -62,6 +99,30 @@ function NamesContent() {
     saveGame(game)
     router.push('/play')
   }
+
+  const handleLoadList = (list: SavedList) => {
+    const padded = [...list.players]
+    setNames(padded)
+    setActiveListIdState(list.id)
+  }
+
+  const handleSelectUnsaved = () => {
+    setActiveListIdState(null)
+  }
+
+  const handleListSaved = (list: SavedList) => {
+    setActiveListIdState(list.id)
+    setSheetOpen(false)
+  }
+
+  const handleManageLists = () => {
+    router.push('/manage-lists')
+  }
+
+  // Get display name for the dropdown
+  const activeList = activeListId ? getSavedListById(activeListId) : null
+  const dropdownLabel = activeList ? activeList.name : 'Unsaved Game'
+  const dropdownIcon = activeList ? '📁' : '🎮'
 
   return (
     <main className="min-h-screen px-6 py-8" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
@@ -77,7 +138,23 @@ function NamesContent() {
         </Link>
         <h1 className="text-2xl font-bold text-white">Player Names</h1>
       </div>
-      <p className="text-gray-500 text-sm mb-6 ml-14">Optional — leave blank for default names</p>
+      <p className="text-gray-500 text-sm mb-5 ml-14">Optional — leave blank for default names</p>
+
+      {/* Saved List Dropdown */}
+      <div className="max-w-sm mx-auto mb-5">
+        <button
+          onClick={() => setSheetOpen(true)}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-150 active:scale-95"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
+          <span className="text-xl">{dropdownIcon}</span>
+          <span className="flex-1 text-left font-semibold text-sm text-white">{dropdownLabel}</span>
+          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>▼</span>
+        </button>
+      </div>
 
       {/* Game info pills */}
       <div className="flex gap-2 mb-6 flex-wrap">
@@ -188,6 +265,18 @@ function NamesContent() {
           Start Playing! 🎮
         </button>
       </div>
+
+      {/* Saved Lists Sheet */}
+      <SavedListsSheet
+        isOpen={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        currentPlayers={names}
+        activeListId={activeListId}
+        onLoadList={handleLoadList}
+        onSelectUnsaved={handleSelectUnsaved}
+        onManageLists={handleManageLists}
+        onListSaved={handleListSaved}
+      />
     </main>
   )
 }
