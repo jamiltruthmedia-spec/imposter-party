@@ -8,10 +8,10 @@ const categoryEmoji: Record<Category, string> = {
   Foods: '🍕',
 }
 
-const categoryDesc: Record<Category, string> = {
-  Objects: 'Everyday items',
-  Locations: 'Places & spaces',
-  Foods: 'Eats & drinks',
+const categoryWordCount: Record<Category, number> = {
+  Objects: 100,
+  Locations: 80,
+  Foods: 70,
 }
 
 interface CategorySelectorProps {
@@ -48,7 +48,12 @@ export default function CategorySelector({ selected, onChange }: CategorySelecto
             >
               {cat}
             </span>
-            <span className="text-xs text-gray-500 mt-0.5">{categoryDesc[cat]}</span>
+            <span
+              className="text-xs mt-1 font-medium"
+              style={{ color: isSelected ? 'rgba(0,212,255,0.7)' : 'rgba(255,255,255,0.35)' }}
+            >
+              ● {categoryWordCount[cat]} words
+            </span>
           </button>
         )
       })}

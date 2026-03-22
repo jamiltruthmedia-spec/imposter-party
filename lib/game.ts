@@ -9,6 +9,7 @@ export interface GameState {
   category: Category
   currentPlayerIndex: number
   revealedPlayers: boolean[]
+  neverFirst: boolean
 }
 
 export function getCategories(): Category[] {
@@ -37,12 +38,11 @@ export function createGame(
   // If neverFirst: ensure index 0 is NOT an imposter by swapping if needed
   if (neverFirst && impostorIndices.includes(0) && shuffledPlayers.length > impostorCount) {
     // Find first non-imposter index to swap with position 0
-    let swapIdx = impostorCount // first non-imposter
-    // Swap player at position 0 with player at swapIdx
+    const swapIdx = impostorCount // first non-imposter
     const temp = shuffledPlayers[0]
     shuffledPlayers[0] = shuffledPlayers[swapIdx]
     shuffledPlayers[swapIdx] = temp
-    // impostorIndices remain the same (1..impostorCount) so index 0 is now a non-imposter
+    // impostorIndices remain the same (0..impostorCount-1) but now index 0 is a non-imposter
   }
 
   return {
@@ -52,6 +52,7 @@ export function createGame(
     category,
     currentPlayerIndex: 0,
     revealedPlayers: shuffledPlayers.map(() => false),
+    neverFirst,
   }
 }
 
@@ -61,6 +62,16 @@ export function isImpostor(state: GameState, playerIndex: number): boolean {
 
 export function getCurrentPlayer(state: GameState): string {
   return state.players[state.currentPlayerIndex]
+}
+
+export function markPlayerRevealed(state: GameState, playerIndex: number): GameState {
+  const newRevealed = [...state.revealedPlayers]
+  newRevealed[playerIndex] = true
+  return {
+    ...state,
+    revealedPlayers: newRevealed,
+    currentPlayerIndex: playerIndex + 1, // keep compat
+  }
 }
 
 export function advancePlayer(state: GameState): GameState {
@@ -76,7 +87,7 @@ export function advancePlayer(state: GameState): GameState {
 }
 
 export function isGameComplete(state: GameState): boolean {
-  return state.currentPlayerIndex >= state.players.length
+  return state.revealedPlayers.every((r) => r)
 }
 
 const GAME_KEY = 'imposterPartyGame'
@@ -86,7 +97,6 @@ export function saveGame(state: GameState): void {
   if (typeof window !== 'undefined') {
     const json = JSON.stringify(state)
     localStorage.setItem(GAME_KEY, json)
-    // Also keep the auto-save key in sync (used for resume detection)
     localStorage.setItem(AUTOSAVE_KEY, json)
   }
 }
@@ -102,17 +112,12 @@ export function loadGame(): GameState | null {
   }
 }
 
-/**
- * Check whether there is an in-progress (not-yet-complete) game saved.
- * Returns the game state if resumable, null otherwise.
- */
 export function getSavedGame(): GameState | null {
   if (typeof window === 'undefined') return null
   try {
     const data = localStorage.getItem(AUTOSAVE_KEY)
     if (!data) return null
     const state = JSON.parse(data) as GameState
-    // Only offer resume if the game isn't complete
     if (isGameComplete(state)) return null
     return state
   } catch {

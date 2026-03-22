@@ -2,18 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Card from '@/components/Card'
 import GameProtection from '@/components/GameProtection'
 import FullscreenButton from '@/components/FullscreenButton'
-import { loadGame, saveGame, clearGame, isImpostor, advancePlayer, isGameComplete, GameState } from '@/lib/game'
+import { loadGame, saveGame, clearGame, isImpostor, GameState } from '@/lib/game'
 
-type Stage = 'pass' | 'revealed' | 'hidden'
+type Phase = 'grid' | 'reveal' | 'voting'
 
 export default function PlayPage() {
   const router = useRouter()
   const [game, setGame] = useState<GameState | null>(null)
-  const [stage, setStage] = useState<Stage>('pass')
-  const [isRevealed, setIsRevealed] = useState(false)
+  const [phase, setPhase] = useState<Phase>('grid')
+  const [activePlayer, setActivePlayer] = useState<number | null>(null)
+  const [cardRevealed, setCardRevealed] = useState(false)
   const [showLeaveModal, setShowLeaveModal] = useState(false)
 
   useEffect(() => {
@@ -39,6 +39,40 @@ export default function PlayPage() {
     setShowLeaveModal(false)
   }
 
+  // Player taps their card on the grid
+  const handlePlayerTap = (index: number) => {
+    if (!game) return
+    if (game.revealedPlayers[index]) return // already done
+    setActivePlayer(index)
+    setCardRevealed(false)
+    setPhase('reveal')
+  }
+
+  // Got it! — mark player as revealed, return to grid
+  const handleGotIt = () => {
+    if (!game || activePlayer === null) return
+    const newRevealed = [...game.revealedPlayers]
+    newRevealed[activePlayer] = true
+    const updated: GameState = { ...game, revealedPlayers: newRevealed }
+    saveGame(updated)
+    setGame(updated)
+    setActivePlayer(null)
+    setCardRevealed(false)
+
+    // Check if ALL players have revealed
+    if (newRevealed.every((r) => r)) {
+      setPhase('voting')
+    } else {
+      setPhase('grid')
+    }
+  }
+
+  // Reveal Results — go to results (game data stays in localStorage for results page to read)
+  const handleRevealResults = () => {
+    if (!game) return
+    router.push('/results')
+  }
+
   if (!game) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#1a1a2e' }}>
@@ -47,44 +81,20 @@ export default function PlayPage() {
     )
   }
 
-  const currentPlayer = game.players[game.currentPlayerIndex]
-  const playerIsImpostor = isImpostor(game, game.currentPlayerIndex)
-  const progress = `${game.currentPlayerIndex + 1} of ${game.players.length}`
+  const revealedCount = game.revealedPlayers.filter(Boolean).length
+  const totalPlayers = game.players.length
 
-  const handleCardTap = () => {
-    if (stage === 'pass') return
-    if (!isRevealed) {
-      setIsRevealed(true)
-      setStage('revealed')
-    } else {
-      setIsRevealed(false)
-      setStage('hidden')
-    }
-  }
-
-  const handleReady = () => {
-    if (stage !== 'hidden' && stage !== 'revealed') return
-
-    const updated = advancePlayer(game)
-    saveGame(updated)
-
-    if (isGameComplete(updated)) {
-      clearGame() // normal completion — clear auto-save
-      router.push('/results')
-      return
-    }
-
-    setGame(updated)
-    setStage('pass')
-    setIsRevealed(false)
-  }
+  // Determine starting player for discussion (neverFirst = imposter cannot be first)
+  const startingPlayerIndex = game.neverFirst
+    ? game.players.findIndex((_, i) => !isImpostor(game, i))
+    : 0
+  const startingPlayerName = game.players[startingPlayerIndex < 0 ? 0 : startingPlayerIndex]
 
   return (
     <>
-      {/* Mobile protection — active throughout gameplay */}
       <GameProtection isActive={true} onAttemptLeave={handleAttemptLeave} />
 
-      {/* Leave-game confirmation modal */}
+      {/* Leave confirmation modal */}
       {showLeaveModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-6"
@@ -127,110 +137,360 @@ export default function PlayPage() {
         </div>
       )}
 
-      <main
-        className="min-h-screen flex flex-col px-6 pb-8"
-        style={{
-          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-          paddingTop: '2.5rem', // offset for the "Game in Progress" banner
-        }}
-      >
-        {/* Progress bar + fullscreen toggle */}
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-gray-400 text-sm font-medium">Progress</span>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400 text-sm font-medium">{progress}</span>
-              <FullscreenButton />
-            </div>
+      {/* ═══ PHASE: PLAYER GRID ═══ */}
+      {phase === 'grid' && (
+        <main
+          className="min-h-screen flex flex-col px-5 pb-8"
+          style={{
+            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            paddingTop: '2.5rem',
+          }}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-2xl font-black text-white">Players</h1>
+            <FullscreenButton />
           </div>
-          <div className="w-full rounded-full h-2" style={{ background: 'rgba(255,255,255,0.1)' }}>
-            <div
-              className="h-2 rounded-full transition-all duration-500"
-              style={{
-                width: `${(game.currentPlayerIndex / game.players.length) * 100}%`,
-                background: 'linear-gradient(to right, #00d4ff, #0099bb)',
-                boxShadow: '0 0 8px rgba(0,212,255,0.5)',
-              }}
-            />
-          </div>
-        </div>
+          <p className="text-gray-400 text-sm mb-1">
+            Tap your name to reveal your word, then pass the device to the next player.
+          </p>
+          <p className="text-gray-500 text-xs mb-5">
+            {revealedCount} of {totalPlayers} revealed
+          </p>
 
-        {/* Pass screen */}
-        {stage === 'pass' && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center">
-            <div className="text-6xl mb-6 float">📱</div>
-            <p className="text-gray-400 text-lg mb-2">Pass the phone to</p>
-            <h2
-              className="text-4xl font-black mb-2"
-              style={{ color: '#00d4ff', textShadow: '0 0 20px rgba(0,212,255,0.6)' }}
-            >
-              {currentPlayer}
-            </h2>
-            <p className="text-gray-500 text-sm mb-12">Make sure no one else is watching!</p>
-
-            <button
-              onClick={() => setStage('revealed')}
-              className="w-full max-w-sm py-5 rounded-2xl font-bold text-xl transition-all duration-200 active:scale-95"
-              style={{
-                background: 'linear-gradient(135deg, #00d4ff, #0099bb)',
-                color: '#1a1a2e',
-                boxShadow: '0 0 30px rgba(0,212,255,0.5)',
-              }}
-            >
-              I have the phone →
-            </button>
-          </div>
-        )}
-
-        {/* Reveal stage */}
-        {(stage === 'revealed' || stage === 'hidden') && (
-          <div className="flex-1 flex flex-col">
-            <div className="text-center mb-6">
-              <p className="text-gray-400 text-sm">
-                {currentPlayer}&apos;s card
-              </p>
-            </div>
-
-            <div className="flex-1 flex items-center justify-center">
-              <div className="w-full max-w-sm">
-                <Card
-                  isImpostor={playerIsImpostor}
-                  word={game.word}
-                  isRevealed={isRevealed}
-                  onTap={handleCardTap}
-                />
-              </div>
-            </div>
-
-            {!isRevealed && (
-              <div className="text-center py-4">
-                <p className="text-gray-500 text-sm">Tap the card to reveal your role</p>
-              </div>
-            )}
-
-            {isRevealed && (
-              <div className="mt-4">
-                <p className="text-center text-gray-500 text-sm mb-3">
-                  Tap card to hide, then pass the phone
-                </p>
+          {/* Player grid — 2 columns */}
+          <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto w-full">
+            {game.players.map((name, i) => {
+              const done = game.revealedPlayers[i]
+              const initial = name.charAt(0).toUpperCase()
+              return (
                 <button
-                  onClick={handleReady}
-                  className="w-full py-4 rounded-2xl font-bold text-lg transition-all duration-200 active:scale-95"
+                  key={i}
+                  onClick={() => handlePlayerTap(i)}
+                  disabled={done}
+                  className="flex flex-col items-center py-5 px-3 rounded-2xl transition-all duration-200 active:scale-95"
                   style={{
-                    background: 'rgba(255,255,255,0.08)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    color: 'white',
+                    background: done ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.05)',
+                    border: done
+                      ? '1px solid rgba(255,255,255,0.07)'
+                      : '1px solid rgba(139,92,246,0.3)',
+                    boxShadow: done ? 'none' : '0 0 12px rgba(139,92,246,0.15)',
+                    cursor: done ? 'default' : 'pointer',
+                    opacity: done ? 0.45 : 1,
                   }}
                 >
-                  {game.currentPlayerIndex + 1 < game.players.length
-                    ? `Pass to ${game.players[game.currentPlayerIndex + 1]} →`
-                    : 'All done — See Results →'}
+                  {/* Avatar circle */}
+                  <div
+                    className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-black mb-3"
+                    style={{
+                      background: done
+                        ? 'rgba(255,255,255,0.08)'
+                        : 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                      color: done ? 'rgba(255,255,255,0.3)' : 'white',
+                      boxShadow: done ? 'none' : '0 0 16px rgba(139,92,246,0.5)',
+                    }}
+                  >
+                    {done ? '✓' : initial}
+                  </div>
+                  <span
+                    className="text-sm font-bold text-center leading-tight"
+                    style={{ color: done ? 'rgba(255,255,255,0.3)' : 'white' }}
+                  >
+                    {name}
+                  </span>
+                  {done && (
+                    <span className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                      Done
+                    </span>
+                  )}
                 </button>
-              </div>
-            )}
+              )
+            })}
+          </div>
+        </main>
+      )}
+
+      {/* ═══ PHASE: WORD REVEAL ═══ */}
+      {phase === 'reveal' && activePlayer !== null && (
+        <WordRevealScreen
+          game={game}
+          playerIndex={activePlayer}
+          cardRevealed={cardRevealed}
+          onReveal={() => setCardRevealed(true)}
+          onGotIt={handleGotIt}
+        />
+      )}
+
+      {/* ═══ PHASE: VOTING ═══ */}
+      {phase === 'voting' && (
+        <VotingScreen
+          startingPlayer={startingPlayerName}
+          onRevealResults={handleRevealResults}
+        />
+      )}
+    </>
+  )
+}
+
+/* ─────────────────────────────────────────
+   Word Reveal Sub-Screen
+───────────────────────────────────────── */
+function WordRevealScreen({
+  game,
+  playerIndex,
+  cardRevealed,
+  onReveal,
+  onGotIt,
+}: {
+  game: GameState
+  playerIndex: number
+  cardRevealed: boolean
+  onReveal: () => void
+  onGotIt: () => void
+}) {
+  const playerName = game.players[playerIndex]
+  const playerIsImpostor = isImpostor(game, playerIndex)
+
+  // Other impostor names (for teammate display)
+  const otherImpostors = game.impostorIndices
+    .filter((i) => i !== playerIndex)
+    .map((i) => game.players[i])
+
+  return (
+    <main
+      className="min-h-screen flex flex-col px-6 pb-8 items-center"
+      style={{
+        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+        paddingTop: '3rem',
+      }}
+    >
+      {/* Header */}
+      <div className="text-center mb-8 w-full max-w-sm">
+        <p className="text-gray-400 text-base mb-1">The word for</p>
+        <h2 className="text-3xl font-black text-white">{playerName}</h2>
+      </div>
+
+      {/* Card */}
+      <div className="w-full max-w-sm mb-6">
+        {!cardRevealed ? (
+          /* Hidden state — sparkle animation */
+          <button
+            onClick={onReveal}
+            className="w-full rounded-3xl flex flex-col items-center justify-center transition-all duration-300 active:scale-95"
+            style={{
+              background: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(109,40,217,0.15))',
+              border: '2px dashed rgba(139,92,246,0.5)',
+              boxShadow: '0 0 30px rgba(139,92,246,0.25)',
+              minHeight: '200px',
+            }}
+          >
+            <div className="text-5xl mb-3 sparkle-anim">✨</div>
+            <p className="text-gray-300 font-semibold text-lg">👆 Tap the box to reveal</p>
+          </button>
+        ) : playerIsImpostor ? (
+          /* Imposter revealed */
+          <div
+            className="w-full rounded-3xl flex flex-col items-center justify-center p-8"
+            style={{
+              background: 'rgba(255,40,40,0.1)',
+              border: '2px solid rgba(255,68,68,0.6)',
+              boxShadow: '0 0 30px rgba(255,68,68,0.3)',
+              minHeight: '200px',
+            }}
+          >
+            <p
+              className="text-5xl font-black mb-2"
+              style={{ color: '#ff4444', textShadow: '0 0 20px rgba(255,68,68,0.8)' }}
+            >
+              Imposter
+            </p>
+            <p className="text-red-400 text-sm opacity-70">You don&apos;t know the word</p>
+          </div>
+        ) : (
+          /* Civilian revealed */
+          <div
+            className="w-full rounded-3xl flex flex-col items-center justify-center p-8"
+            style={{
+              background: 'rgba(0,212,255,0.08)',
+              border: '2px solid rgba(0,212,255,0.5)',
+              boxShadow: '0 0 30px rgba(0,212,255,0.25)',
+              minHeight: '200px',
+            }}
+          >
+            <p
+              className="text-5xl font-black capitalize"
+              style={{ color: '#00d4ff', textShadow: '0 0 20px rgba(0,212,255,0.8)' }}
+            >
+              {game.word}
+            </p>
           </div>
         )}
-      </main>
-    </>
+      </div>
+
+      {/* Imposter teammates section */}
+      {cardRevealed && playerIsImpostor && otherImpostors.length > 0 && (
+        <div
+          className="w-full max-w-sm rounded-2xl p-4 mb-6"
+          style={{
+            background: 'rgba(180,0,0,0.15)',
+            border: '1px solid rgba(255,68,68,0.3)',
+          }}
+        >
+          <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#ff6666' }}>
+            👥 Your Teammates
+          </p>
+          {otherImpostors.map((name, i) => (
+            <p key={i} className="font-bold" style={{ color: '#ff9999' }}>
+              {name}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Got it button */}
+      {cardRevealed && (
+        <div className="w-full max-w-sm">
+          <button
+            onClick={onGotIt}
+            className="w-full py-4 rounded-2xl font-bold text-lg transition-all duration-200 active:scale-95"
+            style={{
+              background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+              color: 'white',
+              boxShadow: '0 0 20px rgba(139,92,246,0.5)',
+            }}
+          >
+            Got it!
+          </button>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes sparkle {
+          0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+          25% { transform: scale(1.2) rotate(-10deg); opacity: 0.8; }
+          50% { transform: scale(0.9) rotate(10deg); opacity: 1; }
+          75% { transform: scale(1.15) rotate(-5deg); opacity: 0.9; }
+        }
+        .sparkle-anim {
+          animation: sparkle 2s ease-in-out infinite;
+        }
+      `}</style>
+    </main>
+  )
+}
+
+/* ─────────────────────────────────────────
+   Voting Phase Sub-Screen
+───────────────────────────────────────── */
+function VotingScreen({
+  startingPlayer,
+  onRevealResults,
+}: {
+  startingPlayer: string
+  onRevealResults: () => void
+}) {
+  const steps = [
+    {
+      num: 1,
+      title: 'Starting Player',
+      desc: `${startingPlayer} starts the round`,
+      color: '#3b82f6',
+      bg: 'rgba(59,130,246,0.1)',
+      border: 'rgba(59,130,246,0.3)',
+      icon: '🎯',
+    },
+    {
+      num: 2,
+      title: 'Group Discussion',
+      desc: 'Go clockwise',
+      color: '#8b5cf6',
+      bg: 'rgba(139,92,246,0.1)',
+      border: 'rgba(139,92,246,0.3)',
+      icon: '🔄',
+    },
+    {
+      num: 3,
+      title: 'Vote Time',
+      desc: 'Each player says a word related to the secret. Go around two or three times.',
+      color: '#f97316',
+      bg: 'rgba(249,115,22,0.1)',
+      border: 'rgba(249,115,22,0.3)',
+      icon: '💬',
+    },
+    {
+      num: 4,
+      title: 'Reveal Phase',
+      desc: 'Vote for the player you think is the imposter, then tap to reveal the results.',
+      color: '#ef4444',
+      bg: 'rgba(239,68,68,0.1)',
+      border: 'rgba(239,68,68,0.3)',
+      icon: '🗳️',
+    },
+  ]
+
+  return (
+    <main
+      className="min-h-screen flex flex-col px-5 pb-8"
+      style={{
+        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+        paddingTop: '3rem',
+      }}
+    >
+      {/* Header */}
+      <div className="text-center mb-2">
+        <div className="text-4xl mb-3">🗳️</div>
+        <h1 className="text-3xl font-black text-white mb-1">Voting Phase</h1>
+        <p className="text-gray-400 text-sm">Time to discuss and vote for the imposter!</p>
+      </div>
+
+      {/* How to Vote */}
+      <div className="mt-6 mb-6 max-w-sm mx-auto w-full">
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">How to Vote</p>
+        <div className="space-y-3">
+          {steps.map((step) => (
+            <div
+              key={step.num}
+              className="flex items-start gap-3 p-4 rounded-2xl"
+              style={{
+                background: step.bg,
+                border: `1px solid ${step.border}`,
+              }}
+            >
+              {/* Number badge */}
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0 mt-0.5"
+                style={{ background: step.color, color: 'white' }}
+              >
+                {step.num}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">{step.icon}</span>
+                  <p className="font-bold text-sm text-white">{step.title}</p>
+                </div>
+                <p className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                  {step.desc}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Reveal Results button */}
+      <div className="max-w-sm mx-auto w-full mt-auto">
+        <button
+          onClick={onRevealResults}
+          className="w-full py-5 rounded-2xl font-bold text-xl tracking-wide transition-all duration-200 active:scale-95"
+          style={{
+            background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+            color: 'white',
+            boxShadow: '0 0 30px rgba(139,92,246,0.5)',
+          }}
+        >
+          Reveal Results 🎭
+        </button>
+      </div>
+    </main>
   )
 }
