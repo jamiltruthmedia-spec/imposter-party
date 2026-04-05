@@ -11,7 +11,7 @@
     "broom", "mop", "sponge", "soap", "toothbrush", "razor", "comb", "brush",
     "scale", "thermometer", "bandage", "pliers", "screwdriver", "wrench", "saw",
     "drill", "shovel", "rake", "hose", "lock", "key", "flashlight", "whistle",
-    "compass", "map", "flag", "magnifying glass", "hourglass", "dice", "playing card",
+    "map", "flag", "magnifying glass", "hourglass", "dice", "playing card",
     "chess piece", "dartboard", "trophy cup", "picture frame", "snow globe",
     "piggy bank", "lunchbox", "thermos", "fan", "iron", "blender"
   ],
@@ -25,7 +25,7 @@
     "subway", "bakery", "florist", "bookshop", "art gallery", "aquarium", "zoo",
     "circus", "amusement park", "bowling alley", "movie theater", "nightclub",
     "casino", "race track", "golf course", "swimming pool", "rooftop", "basement",
-    "attic", "garage", "greenhouse", "treehouse", "lighthouse", "bunker",
+    "attic", "garage", "greenhouse", "treehouse", "bunker",
     "observatory", "planetarium", "botanical garden", "skate park", "skyscraper",
     "bridge", "tunnel", "dam", "oil rig", "submarine", "spaceship"
   ],

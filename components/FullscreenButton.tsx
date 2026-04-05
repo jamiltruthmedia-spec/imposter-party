@@ -50,7 +50,7 @@ export default function FullscreenButton() {
         flexShrink: 0,
       }}
     >
-      {isFullscreen ? '⛶' : '⛶'}
+      {isFullscreen ? '✕' : '⛶'}
     </button>
   )
 }

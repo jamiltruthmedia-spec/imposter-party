@@ -37,12 +37,12 @@ export function createGame(
 
   // If neverFirst: ensure index 0 is NOT an imposter by swapping if needed
   if (neverFirst && impostorIndices.includes(0) && shuffledPlayers.length > impostorCount) {
-    // Find first non-imposter index to swap with position 0
-    const swapIdx = impostorCount // first non-imposter
+    const swapIdx = impostorCount
     const temp = shuffledPlayers[0]
     shuffledPlayers[0] = shuffledPlayers[swapIdx]
     shuffledPlayers[swapIdx] = temp
-    // impostorIndices remain the same (0..impostorCount-1) but now index 0 is a non-imposter
+    impostorIndices.shift()
+    impostorIndices.push(swapIdx)
   }
 
   return {
