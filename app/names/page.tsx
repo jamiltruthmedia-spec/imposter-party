@@ -1,9 +1,18 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createGame, saveGame, Category } from '@/lib/game'
+import {
+  getLastPlayers,
+  saveLastPlayers,
+  getActiveListId,
+  getSavedListById,
+  setActiveListId,
+  SavedList,
+} from '@/lib/savedLists'
+import SavedListsSheet from '@/components/SavedListsSheet'
 
 function NamesContent() {
   const router = useRouter()
@@ -18,10 +27,45 @@ function NamesContent() {
   const [names, setNames] = useState<string[]>(
     Array.from({ length: initialPlayerCount }, () => '')
   )
+  const [activeListId, setActiveListIdState] = useState<string | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [hasLoadedDefaults, setHasLoadedDefaults] = useState(false)
 
-  const playerCount = names.length
+  // Helper: fit a player array to exactly targetCount slots
+  const fitToCount = (players: string[], targetCount: number): string[] => {
+    const result = players.slice(0, targetCount)
+    while (result.length < targetCount) {
+      result.push('')
+    }
+    return result
+  }
 
-  // Derived: actual imposter count (resolved at game start if random)
+  // On mount: load last players or active list
+  useEffect(() => {
+    if (hasLoadedDefaults) return
+    setHasLoadedDefaults(true)
+
+    const savedActiveId = getActiveListId()
+    setActiveListIdState(savedActiveId)
+
+    if (savedActiveId) {
+      const list = getSavedListById(savedActiveId)
+      if (list && list.players.length >= 1) {
+        setNames(fitToCount(list.players, initialPlayerCount))
+        return
+      }
+    }
+
+    // Fall back to last players
+    const last = getLastPlayers()
+    if (last.length >= 1) {
+      setNames(fitToCount(last, initialPlayerCount))
+    }
+  }, [hasLoadedDefaults, initialPlayerCount])
+
+  // Setup count is law — always use initialPlayerCount for display/logic
+  const playerCount = initialPlayerCount
+
   const maxImpostors = Math.min(12, playerCount - 1)
   const displayImpostorCount =
     impostorMode === 'random' ? '?' : Math.min(impostorCountParam, maxImpostors)
@@ -33,7 +77,7 @@ function NamesContent() {
   }
 
   const addPlayer = () => {
-    if (names.length < 100) {
+    if (names.length < initialPlayerCount) {
       setNames([...names, ''])
     }
   }
@@ -47,7 +91,12 @@ function NamesContent() {
     names[index].trim() || `Player ${index + 1}`
 
   const handleStart = () => {
-    const players = Array.from({ length: playerCount }, (_, i) => getPlayerName(i))
+    // Always enforce setup count — truncate extras, no extras from add button should exist
+    const count = Math.min(names.length, initialPlayerCount)
+    const players = Array.from({ length: count }, (_, i) => getPlayerName(i))
+
+    // Save last players always
+    saveLastPlayers(players)
 
     // Resolve imposter count
     let resolvedImpostorCount: number
@@ -63,6 +112,34 @@ function NamesContent() {
     router.push('/play')
   }
 
+  const handleLoadList = (list: SavedList) => {
+    // Setup count is law — truncate if too many, pad with blanks if too few
+    const fitted = list.players.slice(0, initialPlayerCount)
+    while (fitted.length < initialPlayerCount) {
+      fitted.push('')
+    }
+    setNames(fitted)
+    setActiveListIdState(list.id)
+  }
+
+  const handleSelectUnsaved = () => {
+    setActiveListIdState(null)
+  }
+
+  const handleListSaved = (list: SavedList) => {
+    setActiveListIdState(list.id)
+    setSheetOpen(false)
+  }
+
+  const handleManageLists = () => {
+    router.push('/manage-lists')
+  }
+
+  // Get display name for the dropdown
+  const activeList = activeListId ? getSavedListById(activeListId) : null
+  const dropdownLabel = activeList ? activeList.name : 'Unsaved Game'
+  const dropdownIcon = activeList ? '📁' : '🎮'
+
   return (
     <main className="min-h-screen px-6 py-8" style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
       {/* Header */}
@@ -77,7 +154,23 @@ function NamesContent() {
         </Link>
         <h1 className="text-2xl font-bold text-white">Player Names</h1>
       </div>
-      <p className="text-gray-500 text-sm mb-6 ml-14">Optional — leave blank for default names</p>
+      <p className="text-gray-500 text-sm mb-5 ml-14">Optional — leave blank for default names</p>
+
+      {/* Saved List Dropdown */}
+      <div className="max-w-sm mx-auto mb-5">
+        <button
+          onClick={() => setSheetOpen(true)}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-150 active:scale-95"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
+          <span className="text-xl">{dropdownIcon}</span>
+          <span className="flex-1 text-left font-semibold text-sm text-white">{dropdownLabel}</span>
+          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>▼</span>
+        </button>
+      </div>
 
       {/* Game info pills */}
       <div className="flex gap-2 mb-6 flex-wrap">
@@ -149,13 +242,13 @@ function NamesContent() {
       <div className="flex gap-3 max-w-sm mx-auto mb-6">
         <button
           onClick={addPlayer}
-          disabled={names.length >= 100}
+          disabled={names.length >= initialPlayerCount}
           className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95"
           style={{
-            background: names.length >= 100 ? 'rgba(255,255,255,0.03)' : 'rgba(139,92,246,0.2)',
-            border: names.length >= 100 ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(139,92,246,0.4)',
-            color: names.length >= 100 ? 'rgba(255,255,255,0.2)' : '#a78bfa',
-            cursor: names.length >= 100 ? 'not-allowed' : 'pointer',
+            background: names.length >= initialPlayerCount ? 'rgba(255,255,255,0.03)' : 'rgba(139,92,246,0.2)',
+            border: names.length >= initialPlayerCount ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(139,92,246,0.4)',
+            color: names.length >= initialPlayerCount ? 'rgba(255,255,255,0.2)' : '#a78bfa',
+            cursor: names.length >= initialPlayerCount ? 'not-allowed' : 'pointer',
           }}
         >
           + Add Player
@@ -188,6 +281,18 @@ function NamesContent() {
           Start Playing! 🎮
         </button>
       </div>
+
+      {/* Saved Lists Sheet */}
+      <SavedListsSheet
+        isOpen={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        currentPlayers={names}
+        activeListId={activeListId}
+        onLoadList={handleLoadList}
+        onSelectUnsaved={handleSelectUnsaved}
+        onManageLists={handleManageLists}
+        onListSaved={handleListSaved}
+      />
     </main>
   )
 }
